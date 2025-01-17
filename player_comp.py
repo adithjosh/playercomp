@@ -280,7 +280,7 @@ def load_gk():
     return df, check_g
     
 #new function test for generating default stats per position:
-def generate_stats(df):
+def generate_stats(df,position):
     #Define keywords to check for
     position_keywords = {
         "FW": ["Goals", "xG", "Assists", "xAG", "Aerial", "Shot Creating Actions", "SoT", "Take-Ons", "Passes Completed"],
@@ -289,14 +289,16 @@ def generate_stats(df):
         "GK": ["Save", "PSxG", "Crosses", "Pass Completion", "Goals Allowed", "GA/SoT", "Avg Pass"]
     }
 
-    default_stats = {}
-    for position, keywords in position_keywords.items():
+    default_stats = []
+    choose = position_keywords.get(position)
+    for keyword in choose:
         #matching to keywords
         matched_stats = [
             col for col in df.columns 
-            if any(keyword in col for keyword in keywords)
+            if keyword in col
         ]
-        default_stats[position] = matched_stats
+        default_stats.append(matched_stats)
+        
 
     return default_stats
 #create app
@@ -341,6 +343,7 @@ def main():
         stats = st.multiselect(
             "Select Stats for Chart & Table:",
             options=stats,
+            default = stats[:5]
         )
         if not stats:
             st.warning("No default stats available for the selected position. Please select stats manually.")
