@@ -1,4 +1,4 @@
-# footycomp
+# playercomp
 
 URL: 
 
