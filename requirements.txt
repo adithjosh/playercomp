@@ -1,0 +1,8 @@
+scikit-learn
+pandas
+matplotlib
+numpy
+scipy
+streamlit
+mplsoccer
+Unidecode
