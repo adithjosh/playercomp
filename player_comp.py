@@ -201,7 +201,7 @@ def highlight(row, player):
     return styles
 
 #similarity calc
-def similarity(df,name,position,stats,threshold, nation, team):
+def similarity(df,name,position,stats,threshold, nation, team, inverse_stats):
     
     player=df[df["Player"]==name]
     if player.empty: #null case
@@ -221,7 +221,6 @@ def similarity(df,name,position,stats,threshold, nation, team):
     for stat in stats:
         position_data[f"{stat}_Percentile"] = rankdata(position_data[stat], method="average") / len(position_data)
         #account for statistics where lower numbers = better performance like errors and GA
-        inverse_stats = ["Errors Per 90", "Goals Allowed Per 90", "GA/SoT Per 90"]
         if stat in inverse_stats:
             position_data[f"{stat}_Percentile"] = 1 - position_data[f"{stat}_Percentile"]
     #extract the percentiles for the selected player
@@ -260,70 +259,36 @@ def load():
         df = pd.read_csv("mls_players.csv")
         st.sidebar.info("Using default MLS field player dataset.")
     return df, check_f
-def load_gk():
-    uploaded_file = st.sidebar.file_uploader("Upload goalkeeper dataset (CSV)", type=["csv"])
-    check_g = True
-    if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        if "Position" in df.columns:
-            st.sidebar.success(f"Uploaded dataset: {uploaded_file.name}")
-            check_g = False
-            if "Name" in df.columns:                
-                df.rename(columns={'Name': 'Player'}, inplace=True)
-            elif "name" in df.columns:                
-                df.rename(columns={'name': 'Player'}, inplace=True)
-        else:
-            st.warning("Failed to load, missing position column")
-    else:
-        df = pd.read_csv("mls_gk.csv")
-        st.sidebar.info("Using default MLS goalkeeper dataset.")
-    return df, check_g
+
     
-#new function test for generating default stats per position:
-def generate_stats(df,position):
-    #Define keywords to check for
-    position_keywords = {
-        "FW": ["Goals", "xG", "Assists", "xAG", "Aerial", "Shot Creating Actions", "SoT", "Take-Ons", "Passes Completed"],
-        "MF": ["Take-On", "Pass Completion", "Tackles", "Shot Creating Actions", "Dribble", "Goals per Shot", "Interceptions", "Progressive Pass"],
-        "DF": ["Tackles", "Errors", "Passes Completed", "Aerial", "Dribble", "Progressive Pass", "Long Pass"],
-        "GK": ["Save", "PSxG", "Crosses", "Pass Completion", "Goals Allowed", "GA/SoT", "Avg Pass"]
-    }
-
-    default_stats = []
-    choose = position_keywords.get(position)
-    for keyword in choose:
-        #matching to keywords
-        matched_stats = [
-            col for col in df.columns 
-            if keyword in col
-        ]
-        default_stats.append(matched_stats)
-        
-
-    return default_stats
 #create app
 def main():
     #st.set_page_config(layout="wide")
     #st.title("MLS Player Comparer")
     
     f, check_f = load()
-    g,check_g=load_gk()
     pl = f.copy()
-    gk=g.copy()
-    if pl.empty or gk.empty:
+
+    if pl.empty:
         st.error("Dataset could not be loaded. Please check the file path.")
         return
     if "Name" in f.columns:
         f.rename(columns={'Name': 'Player'}, inplace=True)
     elif "name" in f.columns:
-        f.rename(columns={'name': 'Player'}, inplace=True)      
+        f.rename(columns={'name': 'Player'}, inplace=True)
+    if "country" in f.columns:
+        f.rename(columns={'country': 'Nation'}, inplace=True)
+    elif "Country" in f.columns:
+        f.rename(columns={'Country': 'Nation'}, inplace=True)
+       
     
     #setup sidebar and tabs
     st.sidebar.header("Player Search and Filters")
     tab1, tab2,tab3 = st.tabs(["Chart", "Similar Players", "Best Players"])
     with st.sidebar.expander("Required", expanded=True):
-        position = st.selectbox("Select Position", options=["FW", "MF", "DF", "GK"])
-        df = gk if position=="GK" else pl
+        
+        df =  pl
+        position = st.selectbox("Select Position", options=list(df["Position"].unique()))
         teams = df["Team"].unique()
         all_player_names = sorted(df["Player"].apply(lambda x: unidecode(x)).tolist())
         name = st.selectbox(
@@ -342,15 +307,19 @@ def main():
                 )
         stats = st.multiselect(
             "Select Stats for Chart & Table:",
-            options=stats,
-            default = stats[:5]
+            stats,
+            stats[:5]
         )
         if not stats:
             st.warning("No default stats available for the selected position. Please select stats manually.")
         chart_type = st.selectbox("Select Chart Type", options=["Radar", "Pizza"])
         threshold = st.slider("Number of Similar/Best Players", 1, 25, 1) 
     with st.sidebar.expander("Optional Filters", expanded=False):
-        
+        inverse_stats = st.multiselect(
+        "Inverse Stats:",
+        options=[stat for stat in stats if stat not in excluded_cols],
+        help="Lower values for these stats will result in higher percentiles."
+    )
         nation_filter = st.selectbox("Filter by Nation", options=["All"] + sorted(df["Nation"].dropna().unique().tolist()))
         team_filter = st.selectbox("Filter by Team", options=["All"] + sorted(list(teams)))
         
@@ -375,7 +344,6 @@ def main():
             for stat in stats:
                 position_data[f"{stat}_Percentile"] = rankdata(position_data[stat], method="average") / len(position_data)
 
-                inverse_stats = ["Errors Per 90", "Goals Allowed Per 90", "GA/SoT Per 90"]
                 if stat in inverse_stats:
                     position_data[f"{stat}_Percentile"] = 1 - position_data[f"{stat}_Percentile"]
 
@@ -402,16 +370,14 @@ def main():
         player = df[df["Player"]==name]
         if not player.empty:
             if len(stats)<3:
-                st.warning("Select 3 or more stats for visualization")
+                st.error("Select 3 or more stats for visualization")
             position_data = df[df["Position"] == position].copy()
             #temporarily add the player to the position data if positions don't match
             if player["Position"].iloc[0] != position:
-                if position == "GK":
-                    st.warning(f"{name} is not a goalkeeper, except Sean Zawadzki :)")
-                else:
-                    temp_player = player.copy()
-                    temp_player["Position"] = position
-                    position_data = pd.concat([position_data, temp_player], ignore_index=True)
+                temp_player = player.copy()
+                temp_player["Position"] = position
+                position_data = pd.concat([position_data, temp_player], ignore_index=True)
+                    
             #check if comparison player exists
             if compare:
                 #st.header(f"{name.title()} vs. {compare.title()}")
@@ -434,7 +400,6 @@ def main():
                 position_data[stat] = position_data[stat].fillna(0)
                 position_data[f"{stat}_Percentile"] = rankdata(position_data[stat], method="average") / len(position_data)
                 #inverse/lower score=better stats
-                inverse_stats = ["Errors Per 90", "Goals Allowed Per 90", "GA/SoT Per 90"]
                 if stat in inverse_stats:
                     position_data[f"{stat}_Percentile"] = 1 - position_data[f"{stat}_Percentile"]
             player_percentiles = position_data[position_data["Player"] == name][[f"{stat}_Percentile" for stat in stats]].iloc[0].to_dict()
@@ -483,7 +448,7 @@ def main():
                     else:
                         team = team_filter
                     #get similar players
-                    similar = similarity(df,name,position,stats, threshold, nation, team)
+                    similar = similarity(df,name,position,stats, threshold, nation, team, inverse_stats)
                     #similar.reset_index(drop=True, inplace=True)
                     similar = similar.drop_duplicates(subset=['Player'])
                     #get player and pass for highlighter +/-
@@ -498,9 +463,7 @@ def main():
         st.sidebar.info(
         """
         **Note**: Currently only have comparison pizza graphs, not radar.
-        Also, percentiles for certain stats *Errors Per 90*, *Goals Allowed Per 90*, 
-        and *GA/SoT Per 90* are **inverted**. This means lower raw values for these stats 
-        correspond to higher percentiles, as lower values indicate better performance.
+        To account for inverse stats (stats where less = better, such as errors), add them into the inverse stats box in the optional filters.
         """
     )
 if __name__ == "__main__":
