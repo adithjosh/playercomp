@@ -2,6 +2,8 @@
 
 URL: https://playercomp.streamlit.app/
 
+BETA Version - still in testing
+
 Import your own player dataset and create pizza/radar charts and compare players for chosen stats
 
 This streamlit app uses any dataset you provide utilizes the mplsoccer package to create Pizza and Python charts of the players alongside tables for similar players and best players per position based on chosen stats.
